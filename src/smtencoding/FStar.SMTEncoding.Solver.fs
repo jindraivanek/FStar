@@ -262,11 +262,11 @@ let ask_and_report_errors env all_labels prefix query suffix =
                      record_hint (Some hint) ;
                      if Options.check_hints() then
                          let hint_cfg = hint.fuel, hint.ifuel, rlimit in
-                         let local_rlimit = ref rlimit in
-                         let hint_worked = ref false in
+                         let local_rlimit = BU.mk_ref rlimit in
+                         let hint_worked = BU.mk_ref false in
                          let z3cliopts_before = Options.z3_cliopt() in
                          let log_queries_before = Options.log_queries() in
-                         let current_core = ref unsat_core in
+                         let current_core = BU.mk_ref unsat_core in
                          Options.set_option "log_queries" (Options.Bool false) ;
                          let rec refine_hint (core_exp_limit:int) =
                             if (!hint_worked) then () else
