@@ -266,51 +266,48 @@ let ask_and_report_errors env all_labels prefix query suffix =
                          let hint_worked = ref false in
                          let z3cliopts_before = Options.z3_cliopt() in
                          let log_queries_before = Options.log_queries() in
-                         let core_exp_limit = ref 0 in
                          let current_core = ref unsat_core in
                          Options.set_option "log_queries" (Options.Bool false) ;
-                         while not (!hint_worked) do
-                            let hint_check_cb (result, elapsed_time) =
-                                 (BU.print "\tHint replay %s in %s milliseconds w/ rlimit %s\n"
-                                    [(match result with
-                                    | Inl _ -> hint_worked := true ; "succeeded"
-                                    | Inr _ -> "FAILED") ;
-                                    BU.string_of_int elapsed_time ;
-                                    BU.string_of_int !local_rlimit ] ) in
-                             Z3.ask !current_core all_labels
-                                (with_fuel [] p (hint.fuel, hint.ifuel, !local_rlimit))
-                                (hint_check_cb)
-                             ;
-                             if (not (!hint_worked)) then (
-                                if (!core_exp_limit) > 10 then (
-                                    core_exp_limit := max_int ;
-                                    local_rlimit := max_int
-                                ) else (
-                                    core_exp_limit := (!core_exp_limit) + 1
-                                );
-                                Options.set_option "z3_cliopts" (Options.List
-                                    [ (Options.String "smt.core.extend_patterns=true") ;
-                                      (Options.String (sprintf "smt.core.extend_patterns.max_distance=%d" !core_exp_limit)) ])
-                                ;
-                                let hint_refinement_cb (result, elapsed_time) =
-                                    (BU.print "\tHint refinement %s in %s ms w/ core exp. limit %s\n"
-                                    [(match result with
-                                      | Inl uc -> current_core := uc ; "ok"
-                                      | Inr errs -> "FAILED") ;
-                                      BU.string_of_int elapsed_time ;
-                                      BU.string_of_int !core_exp_limit]) in
-                                Z3.ask None all_labels
-                                    (with_fuel [] p (hint.fuel, hint.ifuel, max_int)) // <-- no rlimit.
-                                    (hint_refinement_cb)
-                                // TODO: update rlimit in hint?
-                             )
-                         done ;
-                         record_hint (Some { hint_name=query_name;
-                                            hint_index=query_index;
-                                            fuel=prev_fuel;
-                                            ifuel=prev_ifuel;
-                                            query_elapsed_time=elapsed_time;
-                                            unsat_core = !current_core }) ;
+                         let rec refine_hint (core_exp_limit:int) =
+                            if (!hint_worked) then () else
+                                let hint_check_cb (result, elapsed_time) =
+                                        (BU.print "\tHint replay %s in %s milliseconds w/ rlimit %s\n"
+                                        [(match result with
+                                        | Inl _ -> hint_worked := true ; "succeeded"
+                                        | Inr _ -> "FAILED") ;
+                                        BU.string_of_int elapsed_time ;
+                                        BU.string_of_int !local_rlimit ] ) in
+                                    Z3.ask !current_core all_labels
+                                    (with_fuel [] p (hint.fuel, hint.ifuel, !local_rlimit))
+                                    (hint_check_cb)
+                                    ;
+                                    if (not (!hint_worked)) then (
+                                        Options.set_option "z3_cliopts" (Options.List
+                                            [ (Options.String "smt.core.extend_patterns=true") ;
+                                                (Options.String (Printf.sprintf "smt.core.extend_patterns.max_distance=%d" core_exp_limit)) ])
+                                        ;
+                                        let hint_refinement_cb (result, elapsed_time) =
+                                            (BU.print "\tHint refinement %s in %s ms w/ core exp. limit %s\n"
+                                            [(match result with
+                                                | Inl uc -> current_core := uc ; "ok"
+                                                | Inr errs -> "FAILED") ;
+                                                BU.string_of_int elapsed_time ;
+                                                BU.string_of_int core_exp_limit]) in
+                                        Z3.ask None all_labels
+                                            (with_fuel [] p (hint.fuel, hint.ifuel, max_int)) // <-- no rlimit.
+                                            (hint_refinement_cb) ;
+                                        // TODO: update rlimit in hint?
+                                        let lim = if (core_exp_limit) > 10 then max_int else core_exp_limit + 1 in
+                                        refine_hint (lim)
+                                    ) else () in
+                         refine_hint (1) ;
+                         let new_core = { hint_name=query_name;
+                                          hint_index=query_index;
+                                          fuel=prev_fuel;
+                                          ifuel=prev_ifuel;
+                                          query_elapsed_time=elapsed_time;
+                                          unsat_core = !current_core } in
+                         record_hint (Some new_core) ;
                          Options.set_option "z3_cliopts" (Options.List (List.map (fun x -> (Options.String x)) z3cliopts_before)) ;
                          Options.set_option "log_queries" (Options.Bool log_queries_before)
                 else record_hint hint_opt;
