@@ -274,7 +274,7 @@ let ask_and_report_errors env all_labels prefix query suffix =
                                         (BU.print "\tHint replay %s in %s milliseconds w/ rlimit %s\n"
                                         [(match result with
                                         | Inl _ -> hint_worked := true ; "succeeded"
-                                        | Inr _ -> "FAILED") ;
+                                        | Inr _ -> "failed") ;
                                         BU.string_of_int elapsed_time ;
                                         BU.string_of_int !local_rlimit ] ) in
                                     Z3.ask !current_core all_labels
@@ -282,6 +282,7 @@ let ask_and_report_errors env all_labels prefix query suffix =
                                     (hint_check_cb)
                                     ;
                                     if (not (!hint_worked)) then (
+                                        let refinement_worked = BU.mk_ref false in
                                         Options.set_option "z3_cliopts" (Options.List
                                             [ (Options.String "smt.core.extend_patterns=true") ;
                                               (Options.String (format "smt.core.extend_patterns.max_distance=%s" [ (BU.string_of_int core_exp_limit) ])) ])
@@ -289,16 +290,17 @@ let ask_and_report_errors env all_labels prefix query suffix =
                                         let hint_refinement_cb (result, elapsed_time) =
                                             (BU.print "\tHint refinement %s in %s ms w/ core exp. limit %s\n"
                                             [(match result with
-                                                | Inl uc -> current_core := uc ; "ok"
-                                                | Inr errs -> "FAILED") ;
+                                                | Inl uc -> refinement_worked := true; current_core := uc ; "ok"
+                                                | Inr errs -> "FAILED. No core, falling back to previously obtained core.") ;
                                                 BU.string_of_int elapsed_time ;
                                                 BU.string_of_int core_exp_limit]) in
                                         Z3.ask None all_labels
                                             (with_fuel [] p (hint.fuel, hint.ifuel, max_int)) // <-- no rlimit.
                                             (hint_refinement_cb) ;
                                         // TODO: update rlimit in hint?
-                                        let lim = if (core_exp_limit) > 10 then max_int else core_exp_limit + 1 in
-                                        refine_hint (lim)
+                                        if (!refinement_worked && core_exp_limit <> max_int) then
+                                            let lim = if (core_exp_limit) > 10 then max_int else core_exp_limit + 1 in
+                                            refine_hint (lim)
                                     ) else () in
                          refine_hint (1) ;
                          let new_core = { hint_name=query_name;
