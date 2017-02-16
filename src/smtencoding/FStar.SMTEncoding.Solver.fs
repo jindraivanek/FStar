@@ -284,7 +284,7 @@ let ask_and_report_errors env all_labels prefix query suffix =
                                     if (not (!hint_worked)) then (
                                         Options.set_option "z3_cliopts" (Options.List
                                             [ (Options.String "smt.core.extend_patterns=true") ;
-                                                (Options.String (Printf.sprintf "smt.core.extend_patterns.max_distance=%d" core_exp_limit)) ])
+                                              (Options.String (format "smt.core.extend_patterns.max_distance=%s" [ (BU.string_of_int core_exp_limit) ])) ])
                                         ;
                                         let hint_refinement_cb (result, elapsed_time) =
                                             (BU.print "\tHint refinement %s in %s ms w/ core exp. limit %s\n"
