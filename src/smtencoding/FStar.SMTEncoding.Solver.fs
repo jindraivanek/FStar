@@ -242,14 +242,15 @@ let ask_and_report_errors env all_labels prefix query suffix =
             if Options.z3_refresh() || Options.print_z3_statistics() then Z3.refresh();
             let query_info tag =
                  if Options.log_queries() then BU.print "\t[%s]\n" [at_log_file()] ;
-                 BU.print "\tQuery (%s, %s)\t%s%s in %s milliseconds with fuel %s and ifuel %s\n"
+                 BU.print "\tQuery (%s, %s)\t%s%s in %s milliseconds with fuel %s and ifuel %s and rlimit %s\n"
                                 [query_name;
                                  BU.string_of_int query_index;
                                  tag;
                                  (if used_hint then " (with hint)" else "");
                                  BU.string_of_int elapsed_time;
                                  BU.string_of_int prev_fuel;
-                                 BU.string_of_int prev_ifuel]
+                                 BU.string_of_int prev_ifuel;
+                                 BU.string_of_int rlimit]
             in
             match result with
             | Inl unsat_core ->
@@ -270,19 +271,19 @@ let ask_and_report_errors env all_labels prefix query suffix =
                          let current_core = BU.mk_ref unsat_core in
                          Options.set_option "log_queries" (Options.Bool false) ;
                          let rec refine_hint (core_exp_limit:int) =
-                            if (!hint_worked) then () else
+                            if !hint_worked then () else
                                 let hint_check_cb (result, elapsed_time) =
                                         (BU.print "\tHint replay %s in %s milliseconds w/ rlimit %s\n"
                                         [(match result with
                                         | Inl _ -> hint_worked := true ; "succeeded"
                                         | Inr _ -> "failed") ;
                                         BU.string_of_int elapsed_time ;
-                                        BU.string_of_int !local_rlimit ] ) in
+                                        BU.string_of_int !local_rlimit ] ) in  
                                     Z3.ask !current_core all_labels
                                     (with_fuel [] p (hint.fuel, hint.ifuel, !local_rlimit))
                                     (hint_check_cb)
                                     ;
-                                    if (not (!hint_worked)) then (
+                                    if not !hint_worked then (
                                         let refinement_worked = BU.mk_ref false in
                                         Options.set_option "z3_cliopts" (Options.List
                                             [ (Options.String "smt.core.extend_patterns=true") ;
@@ -302,15 +303,21 @@ let ask_and_report_errors env all_labels prefix query suffix =
                                         if (!refinement_worked && core_exp_limit <> max_int) then
                                             let lim = if (core_exp_limit) > 10 then max_int else core_exp_limit + 1 in
                                             refine_hint (lim)
-                                    ) else () in
+                                    ) else (
+                                        BU.print_string "New working hint:\n" ;
+                                        match !current_core with
+                                        | None -> BU.print_string "<empty>"
+                                        | Some core -> ignore (List.map (fun x -> print_string (" " ^ x)) core) ;
+                                        BU.print_string "\n"
+                                    ) in
                          refine_hint (1) ;
-                         let new_core = { hint_name=query_name;
+                         let new_hint = { hint_name=query_name;
                                           hint_index=query_index;
                                           fuel=prev_fuel;
                                           ifuel=prev_ifuel;
                                           query_elapsed_time=elapsed_time;
                                           unsat_core = !current_core } in
-                         record_hint (Some new_core) ;
+                         record_hint (Some new_hint) ;
                          Options.set_option "z3_cliopts" (Options.List (List.map (fun x -> (Options.String x)) z3cliopts_before)) ;
                          Options.set_option "log_queries" (Options.Bool log_queries_before)
                 else record_hint hint_opt;
@@ -321,6 +328,12 @@ let ask_and_report_errors env all_labels prefix query suffix =
                  if Options.print_fuels()
                  || Options.hint_info()
                  then query_info "failed";
+                 if used_hint then (
+                 print_string "Failed hint:\n";
+                 match unsat_core with
+                 | None -> BU.print_string "<empty>"
+                 | Some core -> ignore (List.map (fun x -> print_string (" " ^ x)) core) ;
+                 print_string "\n" ) ;
                  try_alt_configs (prev_fuel, prev_ifuel, rlimit) p errs alt in
 
         if Option.isSome unsat_core then Z3.refresh();
