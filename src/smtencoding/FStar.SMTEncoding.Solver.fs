@@ -215,7 +215,7 @@ let ask_and_report_errors env all_labels prefix query suffix =
             Err.add_errors env (fst errs |> List.map (fun (_, x, y) -> x, y))
         in
 
-        BU.print "(%s ...)\n" [ Range.string_of_range (Env.get_range env) ] ;
+        BU.print "(%s)\n" [ Range.string_of_range (Env.get_range env) ] ;
         let use_errors (errs:error_labels * error_kind) (result:z3_result) : z3_result =
             match errs, result with
             | ([], _), _
@@ -241,9 +241,9 @@ let ask_and_report_errors env all_labels prefix query suffix =
             if used_hint then (Z3.refresh(); record_hint_stat hint_opt result elapsed_time (Env.get_range env));
             if Options.z3_refresh() || Options.print_z3_statistics() then Z3.refresh();
             let query_info tag =
-                 BU.print "...%s)\tQuery (%s, %s)\t%s%s in %s milliseconds with fuel %s and ifuel %s\n"
-                                [at_log_file();
-                                 query_name;
+                 if Options.log_queries() then BU.print "\t[%s]\n" [at_log_file()] ;
+                 BU.print "\tQuery (%s, %s)\t%s%s in %s milliseconds with fuel %s and ifuel %s\n"
+                                [query_name;
                                  BU.string_of_int query_index;
                                  tag;
                                  (if used_hint then " (with hint)" else "");
